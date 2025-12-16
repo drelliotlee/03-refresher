@@ -12,31 +12,30 @@ df = pd.DataFrame(
 )
 
 # -----------------------------------------------
-# ALWAYS enforce schema at end of pipeline
+# BEST PRACTICE 1: enforce dtypes at import time
 # -----------------------------------------------
 
-# why at the end? many operations quietly coerce dtypes
-# - merge creates NaNs, that changes integers into floats
-# - concat upcasts dtypes to accommodate all inputs
-# - string operations may change categories back to object
-# - fillna on integer cols makes them floats
-SCHEMA = {
-    "user_id": "Int64",
-    "age": "Int8",
-    "is_active": "boolean",
-    "country": "category",
-    "score": "float32",
-}
+df2 = pd.read_csv(
+    'files/example.csv',
+    dtype={
+        "user_id": "Int64",
+        "age": "Int8",
+        "is_active": "boolean",
+        "country": "category",
+        "score": "float32",
+    }
+)
 
-# enforce_schema doesnt change the df in pipeline
-# but will make entire pipeline fail if schema is violated
-def enforce_schema(df: pd.DataFrame) -> pd.DataFrame:
-    return df.assign(
-        **{
-            col: df[col].astype(dtype)
-            for col, dtype in SCHEMA.items()
-        }
-    )
+df3 = pd.read_parquet(
+    'files/example.parquet',
+    dtype={
+        "user_id": "Int64",
+        "age": "Int8",
+        "is_active": "boolean",
+        "country": "category",
+        "score": "float32",
+    }
+)
 
 
 # -----------------------------------------------
@@ -44,7 +43,7 @@ def enforce_schema(df: pd.DataFrame) -> pd.DataFrame:
 # -----------------------------------------------
 
 # bool can only be True False, cant deal with missing values
-# panda's "boolean" dtype can hold NaNs
+# boolean (dtype from pandas) can hold NaNs
 def clean_is_active_boolean(df: pd.DataFrame) -> pd.DataFrame:
     return df.assign(
         is_active=(
@@ -60,12 +59,10 @@ def clean_is_active_boolean(df: pd.DataFrame) -> pd.DataFrame:
 # -----------------------------------------------
 
 # category uses less memory than strings
-def cast_to_category(col: str):
-    def _cast(df: pd.DataFrame) -> pd.DataFrame:
-        return df.assign(
-            **{col: df[col].astype("category")}
-        )
-    return _cast
+def cast_country_to_category(df: pd.DataFrame) -> pd.DataFrame:
+    return df.assign(
+        country=df["country"].astype("category")
+    )
 
 # freeze categories
 COUNTRY_DOMAIN = ["US", "CA", "MX"]
@@ -91,6 +88,32 @@ def downcast_numerics(df: pd.DataFrame) -> pd.DataFrame:
         score=df["score"].astype("float32"),   # model-safe precision
     )
 
+# -----------------------------------------------
+# BEST PRACTICE 3: enforce schema again at end of pipeline
+# -----------------------------------------------
+
+# why at the end? many operations quietly coerce dtypes
+# - merge creates NaNs, that changes integers into floats
+# - concat upcasts dtypes to accommodate all inputs
+# - string operations may change categories back to object
+# - fillna on integer cols makes them floats
+SCHEMA = {
+    "user_id": "Int64",
+    "age": "Int8",
+    "is_active": "boolean",
+    "country": "category",
+    "score": "float32",
+}
+
+# if schema is violated, entire pipe fails
+def enforce_schema(df: pd.DataFrame) -> pd.DataFrame:
+    return df.assign(
+        **{
+            col: df[col].astype(dtype)
+            for col, dtype in SCHEMA.items()
+        }
+    )
+
 
 # -----------------------------------------------
 # FINAL PIPELINE
@@ -100,8 +123,8 @@ df_final = (
     df
     .pipe(cast_user_id_to_Int64)
     .pipe(clean_is_active_boolean)
-    .pipe(cast_to_category("country"))
+    .pipe(cast_country_to_category)
     .pipe(downcast_numerics)
-    .pipe(enforce_schema)
     .pipe(freeze_country_domain)
+    .pipe(enforce_schema)
 )
