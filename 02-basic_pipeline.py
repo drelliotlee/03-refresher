@@ -6,24 +6,6 @@ json_df = pd.read_json('files/example_json.json', header=None)
 parquet_df = pd.read_parquet('files/example.parquet')
 feather_df = pd.read_feather('files/example.feather')
 
-# chunking large files (csv)
-chunks = pd.read_csv('files/example_csv.csv', chunksize=10000)  
-df_list = []
-for chunk in chunks:
-    # long processing pipe goes here
-    df_list.append(chunk)
-df = pd.concat(df_list, ignore_index=True)
-
-# chunking large files (parquet)
-import pyarrow.parquet as pq
-parquet_file = pq.ParquetFile('files/example.parquet')
-df_list = []
-for batch in parquet_file.iter_batches(batch_size=10000):
-    df_chunk = batch.to_pandas()
-    # long processing pipe goes here
-    df_list.append(df_chunk)
-df = pd.concat(df_list, ignore_index=True)  # Concatenate at the end
-
 
 # clean string columns
 def clean_string_col(df: pd.DataFrame) -> pd.DataFrame:
@@ -66,20 +48,6 @@ def add_age_buckets(df: pd.DataFrame) -> pd.DataFrame:
         age_buckets=lambda d: pd.cut(d["age"], bins=[0, 16, 65])
     )
 
-# change string col to category col
-def cast_to_category(col: str):
-    def _cast(df: pd.DataFrame) -> pd.DataFrame:
-        return df.assign(
-            **{col: lambda d: d[col].astype("category")}
-        )
-    return _cast
-
-# vectorizing an arbitrary function (apply is slow)
-def arbitrary_func(some_col):
-    return some_col+1
-vectorized_func = np.vectorize(arbitrary_func)
-def add_arbitrary_col(df: pd.DataFrame) -> pd.DataFrame:
-    return df.assign(new_col=vectorized_func(df['some_col']))
 
 df_final = (
     df
@@ -96,19 +64,14 @@ df_final = (
     .pipe(clean_string_col)
     .pipe(impute_values)
     .pipe(add_new_cols)
-    .pipe(add_arbitrary_col)
 
     #datetime stuff
     .pipe(add_datetime_features)
     .set_index("timestamp")
     .loc["2024-01-01":"2024-01-07"] # this can only be done bc index is datetime
 
-
     .pipe(validate)
 
-    # categorical columns (best practice for memory and speed)
-    .pipe(cast_to_category("group"))
-    .pipe(cast_to_category("country"))
     .groupby('group', as_index=False)  # calculate statistics per group
     .agg(
         sum_per_group = ('summands', "sum"),
