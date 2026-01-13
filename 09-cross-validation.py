@@ -1,13 +1,15 @@
-# should really be called train-tune-evaluate
+# train-validate-test
+# AKA train-tune-evaluate
 # train (parameters) - tune (model/hyperparameters) - evaluate (final test)
 
 from sklearn.model_selection import KFold
 from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import GroupKFold
 from sklearn.model_selection import TimeSeriesSplit
+from sklearn.model_selection import train_test_split
 
 data = load_full_dataset()
-train_val_data, test_data = split(data)
+train_val_data, test_data = train_test_split(data, test_size=0.2, random_state=42)
 results_df = pd.DataFrame(columns=['model_family', 'hyperparams', 'mean_score', 'std_score', 'cv_scores'])
 
 for model_family in MODEL_FAMILIES:
@@ -91,7 +93,4 @@ best_model = (MODEL_FAMILIES[best_row['model_family']], best_row['hyperparams'])
 best_model.fit(train_val_data) # retrain on full train+val data with best hyperparameters
 
 test_score = evaluate(best_model, test_data) # final evaluation on UNTOUCHED test set
-# evaluate() examples:
-# regressions            ->   mean squared error
-# binary classification  ->   AUC-ROC
-# multi-class classif    ->   F1-score
+
