@@ -1,0 +1,1 @@
+When I type "EXP" at the beginning or end of a prompt, that means i just want you to talk to me in the chat window, not make any changes to code.

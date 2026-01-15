@@ -8,10 +8,11 @@ from sklearn.model_selection import GroupKFold
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.model_selection import train_test_split
 
-data = load_full_dataset()
-train_val_data, test_data = train_test_split(data, test_size=0.2, random_state=42)
-results_df = pd.DataFrame(columns=['model_family', 'hyperparams', 'mean_score', 'std_score', 'cv_scores'])
+## KEY BOUNDARY BETWEEN 2 PIPES ##
+train_val_data, test_data = train_test_split(full_dataset, test_size=0.2, random_state=42)
+## KEY BOUNDARY BETWEEN 2 PIPES ##
 
+results_df = pd.DataFrame(columns=['model_family', 'hyperparams', 'mean_score', 'std_score', 'cv_scores'])
 for model_family in MODEL_FAMILIES:
     for hyperparams in HYPERPARAMETER_GRID[model_family]:
 
