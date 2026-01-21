@@ -8,9 +8,18 @@ from sklearn.model_selection import GroupKFold
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.model_selection import train_test_split
 
+
 ## KEY BOUNDARY BETWEEN 2 PIPES ##
-train_val_data, test_data = train_test_split(full_dataset, test_size=0.2, random_state=42)
+X = df.drop('target_column', axis=1)  
+y = df['target_column']                
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 ## KEY BOUNDARY BETWEEN 2 PIPES ##
+
+# OPTION 1: in practice, pre-processing is done here (scaling, encoding, imputation, etc.)
+preprocess_pipeline.fit(X_train, y_train)
+X_train = preprocess_pipeline.transform(X_train)
+X_test = preprocess_pipeline.transform(X_test)
+# end pre-processing
 
 results_df = pd.DataFrame(columns=['model_family', 'hyperparams', 'mean_score', 'std_score', 'cv_scores'])
 for model_family in MODEL_FAMILIES:
@@ -19,14 +28,21 @@ for model_family in MODEL_FAMILIES:
         cv_scores = []
         
         # VERSION 1
-        # for continuous Ys, split train_val_data into 4 train folds + 1 val fold
+        # for continuous Ys, split X_train/y_train into 4 train folds + 1 val fold
         kf = KFold(n_splits=5, shuffle=True, random_state=42)
-        for train_idx, val_idx in kf.split(train_val_data): 
-            train_fold = train_val_data.iloc[train_idx]
-            val_fold = train_val_data.iloc[val_idx]
+        for i, j in kf.split(X_train): 
+            X_train_fold, y_train_fold = X_train.iloc[i], y_train.iloc[i]
+            X_val_fold, y_val_fold = X_train.iloc[j], y_train.iloc[j]
+            
+            # OPTION 2: most rigorous/correct way: pre-process INSIDE each fold to avoid data leakage
+            preprocess_pipeline.fit(X_train_fold, y_train_fold)
+            X_train_fold = preprocess_pipeline.transform(X_train_fold)
+            X_val_fold = preprocess_pipeline.transform(X_val_fold)
+            # end pre-process
+            
             model = model_family(hyperparams)
-            model.fit(train_fold)
-            score = evaluate(model, val_fold)
+            model.fit(X_train_fold, y_train_fold)
+            score = evaluate(model, X_val_fold, y_val_fold)
             cv_scores.append(score)
             
         # VERSION 2    
@@ -34,14 +50,19 @@ for model_family in MODEL_FAMILIES:
         # Problem: what if your target distribution is imbalanced? (90% normal, 10% fraud)
         # Stratified K-Fold: ensures every fold will have ~90% normal, ~10% fraud
         skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-        X = train_val_data.drop('target_column', axis=1) 
-        y = train_val_data['target_column']               
-        for train_idx, val_idx in skf.split(X, y): 
-            train_fold = train_val_data.iloc[train_idx]
-            val_fold = train_val_data.iloc[val_idx]
+        for i, j in skf.split(X_train, y_train): 
+            X_train_fold, y_train_fold = X_train.iloc[i], y_train.iloc[i]
+            X_val_fold, y_val_fold = X_train.iloc[j], y_train.iloc[j]
+            
+            # OPTION 2: most rigorous/correct way: pre-process INSIDE each fold to avoid data leakage
+            preprocess_pipeline.fit(X_train_fold, y_train_fold)
+            X_train_fold = preprocess_pipeline.transform(X_train_fold)
+            X_val_fold = preprocess_pipeline.transform(X_val_fold)
+            # end pre-process
+            
             model = model_family(hyperparams)
-            model.fit(train_fold)
-            score = evaluate(model, val_fold)
+            model.fit(X_train_fold, y_train_fold)
+            score = evaluate(model, X_val_fold, y_val_fold)
             cv_scores.append(score)
             
         # VERSION 3
@@ -51,14 +72,20 @@ for model_family in MODEL_FAMILIES:
         #   - ex. Medical: all scans from same patient in one fold 
         #   - ex. Finance: all transactions from same user in one fold 
         gkf = GroupKFold(n_splits=5)
-        X = train_val_data.drop('target_column', axis=1)
-        y = train_val_data['target_column']
-        for train_idx, val_idx in gkf.split(X, y, groups=train_val_data['group_col']): # key line here. 
-            train_fold = train_val_data.iloc[train_idx]
-            val_fold = train_val_data.iloc[val_idx]
+        groups = X_train['group_col']  # Assuming group_col is in X_train
+        for i, j in gkf.split(X_train, y_train, groups=groups): 
+            X_train_fold, y_train_fold = X_train.iloc[i], y_train.iloc[i]
+            X_val_fold, y_val_fold = X_train.iloc[j], y_train.iloc[j]
+            
+            # OPTION 2: most rigorous/correct way: pre-process INSIDE each fold to avoid data leakage
+            preprocess_pipeline.fit(X_train_fold, y_train_fold)
+            X_train_fold = preprocess_pipeline.transform(X_train_fold)
+            X_val_fold = preprocess_pipeline.transform(X_val_fold)
+            # end pre-process
+            
             model = model_family(hyperparams)
-            model.fit(train_fold)
-            score = evaluate(model, val_fold)
+            model.fit(X_train_fold, y_train_fold)
+            score = evaluate(model, X_val_fold, y_val_fold)
             cv_scores.append(score)
             
         # VERSION 4
@@ -70,12 +97,19 @@ for model_family in MODEL_FAMILIES:
         #   Fold 4: train on days 1-800,   validate on days 801-1000
         # Notice: training set GROWS each fold (expanding window)
         tscv = TimeSeriesSplit(n_splits=5)
-        for train_idx, val_idx in tscv.split(train_val_data):
-            train_fold = train_val_data.iloc[train_idx]
-            val_fold = train_val_data.iloc[val_idx]
+        for i, j in tscv.split(X_train):
+            X_train_fold, y_train_fold = X_train.iloc[i], y_train.iloc[i]
+            X_val_fold, y_val_fold = X_train.iloc[j], y_train.iloc[j]
+            
+            # OPTION 2: most rigorous/correct way: pre-process INSIDE each fold to avoid data leakage
+            preprocess_pipeline.fit(X_train_fold, y_train_fold)
+            X_train_fold = preprocess_pipeline.transform(X_train_fold)
+            X_val_fold = preprocess_pipeline.transform(X_val_fold)
+            # end pre-process
+            
             model = model_family(hyperparams)
-            model.fit(train_fold)
-            score = evaluate(model, val_fold)
+            model.fit(X_train_fold, y_train_fold)
+            score = evaluate(model, X_val_fold, y_val_fold)
             cv_scores.append(score)
             
         # now for all 4 versions, aggregate results
@@ -91,7 +125,7 @@ for model_family in MODEL_FAMILIES:
 
 best_row = results_df.sort_values('mean_score', ascending=False).iloc[0]
 best_model = (MODEL_FAMILIES[best_row['model_family']], best_row['hyperparams'])
-best_model.fit(train_val_data) # retrain on full train+val data with best hyperparameters
+best_model.fit(X_train, y_train) # retrain on full train data with best hyperparameters
 
-test_score = evaluate(best_model, test_data) # final evaluation on UNTOUCHED test set
+test_score = evaluate(best_model, X_test, y_test) # final evaluation on UNTOUCHED test set
 
