@@ -7,7 +7,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import GroupKFold
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.model_selection import train_test_split
-
+from sklearn.metrics import roc_auc_score
 
 ## KEY BOUNDARY BETWEEN 2 PIPES ##
 X = df.drop('target_column', axis=1)  
@@ -21,7 +21,7 @@ X_train = preprocess_pipeline.transform(X_train)
 X_test = preprocess_pipeline.transform(X_test)
 # end pre-processing
 
-results_df = pd.DataFrame(columns=['model_family', 'hyperparams', 'mean_score', 'std_score', 'cv_scores'])
+all_scores_df = pd.DataFrame(columns=['model_family', 'hyperparams', 'mean_score', 'std_score'])
 for model_family in MODEL_FAMILIES:
     for hyperparams in HYPERPARAMETER_GRID[model_family]:
 
@@ -42,7 +42,10 @@ for model_family in MODEL_FAMILIES:
             
             model = model_family(hyperparams)
             model.fit(X_train_fold, y_train_fold)
-            score = evaluate(model, X_val_fold, y_val_fold)
+            
+            # Evaluate using predict_proba and explicit metric
+            y_val_proba = model.predict_proba(X_val_fold)[:, 1]
+            score = roc_auc_score(y_val_fold, y_val_proba)
             cv_scores.append(score)
             
         # VERSION 2    
@@ -62,7 +65,10 @@ for model_family in MODEL_FAMILIES:
             
             model = model_family(hyperparams)
             model.fit(X_train_fold, y_train_fold)
-            score = evaluate(model, X_val_fold, y_val_fold)
+            
+            # Evaluate using predict_proba and explicit metric
+            y_val_proba = model.predict_proba(X_val_fold)[:, 1]
+            score = roc_auc_score(y_val_fold, y_val_proba)
             cv_scores.append(score)
             
         # VERSION 3
@@ -85,7 +91,10 @@ for model_family in MODEL_FAMILIES:
             
             model = model_family(hyperparams)
             model.fit(X_train_fold, y_train_fold)
-            score = evaluate(model, X_val_fold, y_val_fold)
+            
+            # Evaluate using predict_proba and explicit metric
+            y_val_proba = model.predict_proba(X_val_fold)[:, 1]
+            score = roc_auc_score(y_val_fold, y_val_proba)
             cv_scores.append(score)
             
         # VERSION 4
@@ -109,23 +118,24 @@ for model_family in MODEL_FAMILIES:
             
             model = model_family(hyperparams)
             model.fit(X_train_fold, y_train_fold)
-            score = evaluate(model, X_val_fold, y_val_fold)
+            
+            # Evaluate using predict_proba and explicit metric
+            y_val_proba = model.predict_proba(X_val_fold)[:, 1]
+            score = roc_auc_score(y_val_fold, y_val_proba)
             cv_scores.append(score)
             
-        # now for all 4 versions, aggregate results
-        mean_cv_score = average(cv_scores)
-        std_cv_score = std(cv_scores)  
-        results_df = pd.concat([results_df, pd.DataFrame([{
+        # add 1 more row to all_scores_df
+        all_scores_df = pd.concat([all_scores_df, pd.DataFrame([{
             'model_family': model_family.__name__,
             'hyperparams': hyperparams,
-            'mean_score': mean_cv_score,
-            'std_score': std_cv_score,
-            'cv_scores': cv_scores,
+            'mean_score': average(cv_scores),
+            'std_score': std(cv_scores)
         }])], ignore_index=True)
 
-best_row = results_df.sort_values('mean_score', ascending=False).iloc[0]
+best_row = all_scores_df.sort_values('mean_score', ascending=False).iloc[0]
 best_model = (MODEL_FAMILIES[best_row['model_family']], best_row['hyperparams'])
 best_model.fit(X_train, y_train) # retrain on full train data with best hyperparameters
 
-test_score = evaluate(best_model, X_test, y_test) # final evaluation on UNTOUCHED test set
+y_test_proba = best_model.predict_proba(X_test)[:, 1]
+test_score = roc_auc_score(y_test, y_test_proba)
 
